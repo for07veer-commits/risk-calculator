@@ -4,7 +4,7 @@ import yfinance as yf
 st.set_page_config(page_title="Live Auto Risk & Position Sizer", layout="centered")
 
 st.title("🌍 Live Global Risk & Position Sizer")
-st.markdown("Search bar mein naam type karein aur select karein. Live price aayega aur automatic SL, TGT aur Lots calculate ho jayenge!")
+st.markdown("Search bar mein naam type karein. App aapke **Risk** aur **Capital** dono ko dekh kar sahi Quantity batayegi.")
 
 # 1. Account Info
 st.header("1. Account Details")
@@ -29,41 +29,21 @@ with col_lot:
 
 # 3. LIVE SEARCH BAR (DROPDOWN)
 st.header("3. 🔍 Search Stock / Index")
-
-# Popular Stocks & Index List
 POPULAR_TICKERS = {
     "NIFTY 50": "^NSEI",
     "BANK NIFTY": "^NSEBANK",
     "Reliance Industries": "RELIANCE.NS",
     "HDFC Bank": "HDFCBANK.NS",
-    "ICICI Bank": "ICICIBANK.NS",
     "State Bank of India (SBI)": "SBIN.NS",
     "Infosys": "INFY.NS",
-    "TCS": "TCS.NS",
-    "ITC": "ITC.NS",
-    "Larsen & Toubro (LT)": "LT.NS",
-    "Bharti Airtel": "BHARTIARTL.NS",
-    "Axis Bank": "AXISBANK.NS",
-    "Kotak Mahindra Bank": "KOTAKBANK.NS",
     "Tata Motors": "TATAMOTORS.NS",
-    "Tata Steel": "TATASTEEL.NS",
-    "Mahindra & Mahindra": "M&M.NS",
-    "Maruti Suzuki": "MARUTI.NS",
-    "Bajaj Finance": "BAJFINANCE.NS",
-    "Adani Enterprises": "ADANIENT.NS",
-    "Sun Pharma": "SUNPHARMA.NS",
-    "NTPC": "NTPC.NS",
     "Apple (US)": "AAPL",
-    "Tesla (US)": "TSLA",
-    "Bitcoin (Crypto)": "BTC-USD",
     "--- Type Custom Symbol (Agar list mein nahi hai) ---": "CUSTOM"
 }
 
 search_col, live_col = st.columns([2, 1])
 with search_col:
-    # Dropdown with Typing support
     selected_name = st.selectbox("Naam Type karein aur select karein:", list(POPULAR_TICKERS.keys()))
-    
     if POPULAR_TICKERS[selected_name] == "CUSTOM":
         symbol = st.text_input("Custom Symbol dalein (eg: TATAPOWER.NS):", "TATAPOWER.NS")
     else:
@@ -89,6 +69,9 @@ if symbol:
 st.header("4. Trade Entry & Calculation")
 trade_type = st.radio("Trade Type:", ("Long (Buy)", "Short (Sell)"))
 
+# LEVERAGE OPTION (INTRADAY KE LIYE)
+leverage = st.number_input("Intraday Margin/Leverage (1 for Normal Delivery/Options)", min_value=1, value=1, step=1, help="Intraday equity mein broker 5x margin deta hai toh 5 dalein. Normal Options/Delivery ke liye 1 rakhein.")
+
 entry_price = st.number_input("Entry Price (Auto Fetched - Aap ise badal bhi sakte hain)", min_value=0.0, value=float(live_price), format="%.2f")
 
 if entry_price > 0:
@@ -102,18 +85,27 @@ if entry_price > 0:
         tgt_price = entry_price - (risk_per_share * rr_ratio)
         
     if risk_per_share > 0:
-        raw_quantity = int(max_risk_amount / risk_per_share)
-        no_of_lots = int(raw_quantity / lot_size)
+        # STEP A: RISK KE HISAAB SE MAX QUANTITY
+        qty_by_risk = int(max_risk_amount / risk_per_share)
+        
+        # STEP B: POCKET (CAPITAL) KE HISAAB SE MAX QUANTITY
+        buying_power = total_capital * leverage
+        qty_by_capital = int(buying_power / entry_price)
+        
+        # STEP C: DONO MEIN SE JO KAM HO WAHI FINAL QUANTITY BANEGI!
+        final_raw_qty = min(qty_by_risk, qty_by_capital)
+        
+        no_of_lots = int(final_raw_qty / lot_size)
         total_shares = no_of_lots * lot_size
     else:
-        raw_quantity, no_of_lots, total_shares = 0, 0, 0
+        final_raw_qty, no_of_lots, total_shares = 0, 0, 0
 
     total_invested = total_shares * entry_price
     actual_risk = total_shares * risk_per_share
     total_profit = total_shares * (abs(tgt_price - entry_price))
 
-    if no_of_lots == 0:
-        st.warning(f"⚠️ Aapka risk (₹{max_risk_amount:.2f}) bohot kam hai. 1 Lot lene par bhi risk isse zyada ho raha hai.")
+    if total_shares == 0:
+        st.error(f"⚠️ Aapke Capital (₹{total_capital}) mein is rate (₹{entry_price}) par 1 Lot aana mumkin nahi hai. Capital ya Margin badhayein.")
     else:
         st.success("✅ **Calculation Successful!**")
         c1, c2, c3 = st.columns(3)
