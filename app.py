@@ -3,7 +3,7 @@ import streamlit as st
 st.set_page_config(page_title="Auto Risk & Position Sizer", layout="centered")
 
 st.title("📊 Auto Risk & Position Size Calculator")
-st.markdown("Yeh app Entry Price dalte hi aapke Risk aur RR ratio ke hisab se automatic SL, TGT aur Quantity calculate karegi.")
+st.markdown("Entry Price aur Lot Size dalte hi aapke Risk ke hisab se automatic SL, TGT aur exact **No. of Lots** calculate ho jayenge.")
 
 # 1. Account Info
 st.header("1. Account Details")
@@ -17,12 +17,14 @@ max_risk_amount = total_capital * (risk_percentage / 100)
 st.info(f"💡 Aap is trade mein maximum **₹{max_risk_amount:,.2f}** ka risk le rahe hain.")
 
 # 2. Strategy Setup
-st.header("2. Strategy Setup")
-col3, col4 = st.columns(2)
+st.header("2. Strategy & Instrument Setup")
+col3, col4, col_lot = st.columns(3)
 with col3:
     sl_percent = st.number_input("Stop Loss Margin (%)", min_value=0.1, value=1.0, step=0.1, help="Entry price se SL kitne % door hona chahiye")
 with col4:
-    rr_ratio = st.number_input("Risk : Reward Ratio (1:X)", min_value=0.1, value=2.0, step=0.1, help="Agar 1:2 ka ratio chahiye toh 2 dalein")
+    rr_ratio = st.number_input("Risk : Reward (1:X)", min_value=0.1, value=2.0, step=0.1, help="1:2 ratio ke liye 2 dalein")
+with col_lot:
+    lot_size = st.number_input("Lot Size (Qty in 1 Lot)", min_value=1, value=15, step=1, help="Jaise BankNifty=15, Nifty=25")
 
 # 3. Trade Entry
 st.header("3. Trade Entry")
@@ -30,7 +32,7 @@ trade_type = st.radio("Trade Type:", ("Long (Buy)", "Short (Sell)"))
 entry_price = st.number_input("Entry Price (₹) Type karein aur Enter dabayein", min_value=0.0, format="%.2f")
 
 if entry_price > 0:
-    # Calculations
+    # Calculations for SL and Target
     if trade_type == "Long (Buy)":
         sl_price = entry_price - (entry_price * (sl_percent / 100))
         risk_per_share = entry_price - sl_price
@@ -40,24 +42,45 @@ if entry_price > 0:
         risk_per_share = sl_price - entry_price
         tgt_price = entry_price - (risk_per_share * rr_ratio)
         
-    quantity = int(max_risk_amount / risk_per_share) if risk_per_share > 0 else 0
-    total_invested = quantity * entry_price
-    total_profit = quantity * (abs(tgt_price - entry_price))
+    # Quantity and Lot Calculations
+    if risk_per_share > 0:
+        raw_quantity = int(max_risk_amount / risk_per_share)
+        no_of_lots = int(raw_quantity / lot_size) # Sirf wahi lots jisme risk limit ke andar ho
+        total_shares = no_of_lots * lot_size
+    else:
+        raw_quantity, no_of_lots, total_shares = 0, 0, 0
 
-    # Display Results automatically
-    st.success("✅ **Auto Calculation Successful!**")
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Entry Price", f"₹ {entry_price:,.2f}")
-    c2.metric("Auto Stop Loss (SL)", f"₹ {sl_price:,.2f}")
-    c3.metric("Auto Target (TGT)", f"₹ {tgt_price:,.2f}")
-    
-    st.divider()
-    
-    c4, c5 = st.columns(2)
-    with c4:
-        st.metric("Total Quantity (Shares)", f"{quantity}")
-        st.metric("Capital Required", f"₹ {total_invested:,.2f}")
-    with c5:
-        st.metric("Total Risk (Potential Loss)", f"₹ {quantity * risk_per_share:,.2f}")
-        st.metric("Potential Profit", f"₹ {total_profit:,.2f}")
+    total_invested = total_shares * entry_price
+    actual_risk = total_shares * risk_per_share
+    total_profit = total_shares * (abs(tgt_price - entry_price))
+
+    if no_of_lots == 0:
+        st.warning(f"⚠️ Aapka risk (₹{max_risk_amount:.2f}) bohot kam hai. 1 Lot lene par risk isse zyada ho raha hai, isliye Quantity 0 dikh rahi hai. Kripya apna Risk % badhayein.")
+    else:
+        # Display SL / TGT Results
+        st.success("✅ **Auto Calculation Successful!**")
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Entry Price", f"₹ {entry_price:,.2f}")
+        c2.metric("Auto Stop Loss (SL)", f"₹ {sl_price:,.2f}")
+        c3.metric("Auto Target (TGT)", f"₹ {tgt_price:,.2f}")
+        
+        st.divider()
+        
+        # New Position Sizing Columns
+        st.markdown("### 📦 Position Sizing")
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Lot Size", f"{lot_size}")
+        col_b.metric("No. of Lots", f"{no_of_lots} Lots")
+        col_c.metric("Total Shares (Qty)", f"{total_shares}")
+
+        st.divider()
+        
+        # Financials
+        c4, c5 = st.columns(2)
+        with c4:
+            st.metric("Capital Required (₹)", f"₹ {total_invested:,.2f}")
+        with c5:
+            st.metric("Total Risk (Loss)", f"₹ {actual_risk:,.2f}")
+            
+        st.info(f"💰 **Potential Profit (At Target): ₹ {total_profit:,.2f}**")
